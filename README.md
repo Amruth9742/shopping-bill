@@ -6,7 +6,7 @@ A modern React + Redux Toolkit application that allows users to select products,
 
 ## 🚀 Live Demo
 
-👉 https://your-project.web.app
+👉 https://shopping-bill-9717f.web.app
 
 ---
 
