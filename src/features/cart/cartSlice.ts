@@ -1,15 +1,25 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
 import { loadCart, saveCart } from "../../utils/firestore";
+import { calculateBill } from "../../utils/billing";
+// import type { Product } from "../products/productsSlice";
+// import { useAppSelector } from "../../app/hooks";
+import { type RootState } from "../../app/store";
+
+
 
 type CartState = {
   items: Record<string, number>;
   status: "idle" | "loading" | "error";
   error?: string;
+  budget: number | null;
+  budgetExceeded: boolean;
 };
 
 const initialState: CartState = {
   items: {},
   status: "idle",
+  budget: null,
+  budgetExceeded: false,
 };
 
 export const fetchCart = createAsyncThunk<Record<string, number>, string | undefined>(
@@ -20,22 +30,38 @@ export const fetchCart = createAsyncThunk<Record<string, number>, string | undef
   }
 );
 
-export const addItemToCart = createAsyncThunk<Record<string, number>, { item: string; userId?: string }>(
+export const addItemToCart = createAsyncThunk<Record<string, number>, { item: string; userId?: string }, {state: RootState}>(
   "cart/addItemToCart",
   async (
     payload,
     { dispatch, getState }
   ) => {
+    const state = getState() as RootState;
+    const currentItems = state.cart.items;
+    const products = state.products.products;
+    const budget = state.cart.budget;
+
+    const updatedItems = {
+      ...currentItems,
+      [payload.item]: (currentItems[payload.item] || 0) + 1,
+    };
+
+    const { total } = calculateBill(updatedItems, products);
+
+    if (budget !== null && total > budget) {
+      dispatch(setBudgetExceeded(true));
+      return currentItems;
+    }
+
+    dispatch(setBudgetExceeded(false));
     dispatch(addItem(payload.item));
+    await saveCart({ ...currentItems, [payload.item]: (currentItems[payload.item] || 0) + 1 }, payload.userId ?? "default");
 
-    const state = getState() as { cart: CartState };
-    await saveCart(state.cart.items, payload.userId ?? "default");
-
-    return state.cart.items;
+    return updatedItems;
   }
 );
 
-export const decrementItemFromCart = createAsyncThunk<Record<string, number>, { item: string; userId?: string }>(
+export const decrementItemFromCart = createAsyncThunk<Record<string, number>, { item: string; userId?: string }, {state: RootState}>(
   "cart/decrementItemFromCart",
   async (
     payload,
@@ -43,7 +69,17 @@ export const decrementItemFromCart = createAsyncThunk<Record<string, number>, { 
   ) => {
     dispatch(decrementItem(payload.item));
 
-    const state = getState() as { cart: CartState };
+    const state = getState() as RootState;
+    const { items, budget } = state.cart;
+    const { products } = state.products;
+
+    if (budget !== null) {
+      const { total } = calculateBill(items, products);
+      if (total <= budget) {
+        dispatch(setBudgetExceeded(false));
+      }
+    }
+
     await saveCart(state.cart.items, payload.userId ?? "default");
 
     return state.cart.items;
@@ -70,6 +106,19 @@ const cartSlice = createSlice({
     setCart: (state, action: PayloadAction<Record<string, number>>) => {
       state.items = action.payload;
     },
+
+    setBudget: (state, action: PayloadAction<number>) => {
+      state.budget = action.payload;
+      state.budgetExceeded = false;
+      state.error = undefined;
+    },
+
+    setBudgetExceeded: (state, action: PayloadAction<boolean>) => {
+      state.budgetExceeded = action.payload;
+      if (!action.payload) {
+        state.error = undefined;
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -85,16 +134,12 @@ const cartSlice = createSlice({
         state.status = "error";
         state.error = action.error.message;
       })
-      .addCase(addItemToCart.rejected, (state, action) => {
-        state.status = "error";
-        state.error = action.error.message;
-      })
-      .addCase(decrementItemFromCart.rejected, (state, action) => {
+        .addCase(decrementItemFromCart.rejected, (state, action) => {
         state.status = "error";
         state.error = action.error.message;
       });
   },
 });
 
-export const { addItem, decrementItem, setCart } = cartSlice.actions;
+export const { addItem, decrementItem, setCart, setBudget, setBudgetExceeded } = cartSlice.actions;
 export default cartSlice.reducer;

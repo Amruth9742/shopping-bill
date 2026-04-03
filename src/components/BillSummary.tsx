@@ -10,9 +10,11 @@ export type BillSummaryProps = {
   subtotal: number;
   offers: Offer[];
   total: number;
+  budget: number | null;
+  isNearBudget: boolean;
 };
 
-export function BillSummaryView({ subtotal, offers, total }: BillSummaryProps) {
+export function BillSummaryView({ subtotal, offers, total, budget, isNearBudget }: BillSummaryProps) {
   return (
     <div className="bg-white p-5 rounded-2xl shadow-md">
       <h2 className="text-lg font-semibold mb-4">Bill Summary</h2>
@@ -46,6 +48,26 @@ export function BillSummaryView({ subtotal, offers, total }: BillSummaryProps) {
         <span>Total</span>
         <span>£{total.toFixed(2)}</span>
       </div>
+
+      {budget && <div className="mt-3">
+        <p className="text-sm text-gray-600">
+          Budget: £{budget.toFixed(2)}
+        </p>
+
+        {isNearBudget && total < budget && (
+          <p className="text-yellow-500 font-medium">
+            You are nearing your Budget!
+          </p>
+        )}
+
+        {
+          total > budget && (
+            <p className="text-red-600 font-medium">
+              Budget exceeded: you cannot add items to the cart.
+            </p>
+          )
+        }
+      </div>}
     </div>
   );
 }
@@ -53,10 +75,13 @@ export function BillSummaryView({ subtotal, offers, total }: BillSummaryProps) {
 export default function BillSummary() {
   const { items: cart, status: cartStatus, error: cartError } = useAppSelector((state) => state.cart);
   const { products, loading: productsLoading, error: productsError } = useAppSelector((state) => state.products);
+  const budget = useAppSelector((state) => state.cart.budget);
+  const { subtotal, offers, total } = calculateBill(cart, products);
+  const isNearBudget = budget!==null && total >= 0.9 * budget;
 
   if (cartStatus === "loading" || productsLoading) {
     return (
-      <div className="bg-white p-5 rounded-2xl shadow-md">
+      <div className="bg-white p-5 rounded-2xl shadow-md">f
         <h2 className="text-lg font-semibold mb-4">Bill Summary</h2>
         <p className="text-gray-500">Loading summary...</p>
       </div>
@@ -81,7 +106,7 @@ export default function BillSummary() {
     );
   }
 
-  const { subtotal, offers, total } = calculateBill(cart, products);
+  
 
-  return <BillSummaryView subtotal={subtotal} offers={offers} total={total} />;
+  return <BillSummaryView subtotal={subtotal} offers={offers} total={total} budget={budget} isNearBudget={isNearBudget}/>;
 }
